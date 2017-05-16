@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 //#define tamanhoMaximo 255; NÃO FAZ SENTIDO (VIDE ABAIXO)
@@ -47,7 +48,7 @@ void handler (int numSinal) {
 	houveSinal = 1;
 }
 
-int rodaPrograma(char strteste[50]) {
+int rodaPrograma(char strteste[255]) {
 	char * aux;
 	char * arg_list[20];
 	int child_status;
@@ -116,9 +117,13 @@ void mudaDiretorio() {
 
 int saida() {
 	//int tamanhoMaximo = 255;
-	
+	pid_t pid;
+	FILE * stream;
+	int i = 0, j = 0;
+	int pipefds[2];
 	char comando[tamanhoMaximo];
 	char * token;
+	char tokens[tamanhoMaximo][100];
 	char * argumento;
 	struct sigaction sigact;
 	
@@ -177,11 +182,66 @@ int saida() {
 				mudaDiretorio();
 				
 			} else if (strcmp(comando, "exit") != 0) {
-				rodaPrograma(comando);
-			}
-		}
+				// comando não é exit
+				if (strchr(comando, '|') != NULL) { // comando tem pipe
+					pipe(pipefds); //cria o pipe
+					token = strtok(comando,"|"); // separa os comandos a serem executados no pipe
+					
+					while(token != NULL) { // vai colocando os comandos em uma matriz de execução
+						//fprintf(stderr,"%s\n", token);
+						//fprintf(stderr,"%s\n", token);
+						strcpy(tokens[i],token);
+						i++;
+						//fprintf(stderr,"OI\n");
+						token = strtok(NULL,"|");					
+						//fprintf(stderr,"%s\n", token);
+					}
+					
+					fprintf(stderr,"0: %s\n", tokens[0]);
+					fprintf(stderr,"1: %s\n", tokens[1]);
+					
+					/* Cria um processo filho. */
+					pid = fork ();
+					if (pid == (pid_t) 0) {
+						/* Este é o processo filho. */
+						dup2 (pipefds[0], STDIN_FILENO);
+						close (pipefds[1]);
+						rodaPrograma(tokens[0]);
+						fprintf(stderr,"rodou o %s \n", tokens[0]);
+					} else {
+						/* Processo pai */
+						fprintf(stderr,"processo pai! \n");
+						close (pipefds[0]);
+						fprintf(stderr,"1 \n");
 
-		
+						/* Espere o processo filho terminar. */
+						waitpid (pid, NULL, 0);
+						fprintf(stderr,"antes do roda \n");
+						rodaPrograma(tokens[1]);
+						fprintf(stderr,"rodou o %s \n", tokens[1]);
+					}
+					
+
+						/*while(token != NULL) { // vai colocando os comandos em uma matriz de execução
+							//fprintf(stderr,"%s\n", token);
+							strcpy(tokens[i],token);
+							i++;
+							//fprintf(stderr,"OI\n");
+							token = strtok(NULL,"|");					
+						}
+						
+						for (j = 0; j < i; j++) { //  roda a matriz de execução
+								if (tokens[j]) {
+								rodaPrograma(tokens[j]);
+							}						
+							//fprintf(stderr,"TCHAU\n");
+						}
+						i = 0;*/
+				} else { // comando não tem pipe
+					rodaPrograma(comando);
+				}
+			}
+		}	
 	} while (strcmp(comando, "exit") != 0);
 	
 	return 0;
